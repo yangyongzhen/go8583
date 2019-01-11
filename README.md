@@ -2,13 +2,16 @@
 easy and simple 8583 Protocol Analysis by go Language
 
 
+
 PS D:\GOPATH\src\go8583> go run test.go
+
 test...
 ans 8583 fields
 解析成功
 Print fields...
 
 ==========================================
+
 Len:    0079
 Tpdu:   6005010000
 Head:   613100311108
@@ -16,6 +19,7 @@ Msge:   0810
 Bitmap: 003800010ac00014
 
 ==========================================
+
 [field:11] [500211]
 
 ------------------------------
@@ -49,7 +53,9 @@ Bitmap: 003800010ac00014
 pack 8583 fields
 Print fields...
 
+
 ==========================================
+
 Len:    0057
 Tpdu:   6005010000
 Head:   613100311108
