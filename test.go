@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	ManNum  string = "898430441110012"
-	PosNum  string = "34386013"
+	ManNum  string = "xxxx"
+	PosNum  string = "xxxx"
 	MainKey string = "xxxx"
 	TPDU    string = "xxxx"
 
