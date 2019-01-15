@@ -48,6 +48,18 @@ const (
 	BCD        //value = 2，BCD
 )
 
+var (
+	MacKey  = []byte{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}
+)
+
+/*
+设置工作秘钥,算MAC用
+*/
+func (ea *Easy8583) SetMacKey(strkey string){
+
+	MacKey = hexStringToBytes(strkey)
+
+}
 //各个域的初始配置
 func (ea *Easy8583) Init8583Fields(fds []Field) {
 
@@ -257,22 +269,22 @@ func upGetMac(buf []byte, bufsize int, mackey []byte) ([]byte, error) {
 	}
 
 	Bbuf := fmt.Sprintf("%02X%02X%02X%02X%02X%02X%02X%02X", val[0], val[1], val[2], val[3], val[4], val[5], val[6], val[7])
-	fmt.Printf("Bbuf:%s\n",Bbuf)
+	//fmt.Printf("Bbuf:%s\n",Bbuf)
 	Abuf := make([]byte, 8)
-	fmt.Println(bytesToHexString( []byte(Bbuf[0:8]) ))
+	//fmt.Println(bytesToHexString( []byte(Bbuf[0:8]) ))
 	mac, err := desutil.DesEncrypt([]byte(Bbuf[0:8]), mackey)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("mac1:%x\n",mac)
+	//fmt.Printf("mac1:%x\n",mac)
 	dataXor(mac, []byte(Bbuf[8:]), 8, Abuf)
 	mac, err = desutil.DesEncrypt(Abuf, mackey)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("mac2:%x\n",mac)
+	//fmt.Printf("mac2:%x\n",mac)
 	outmac := fmt.Sprintf("%02X%02X%02X%02X%02X%02X%02X%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], mac[6], mac[7])
-	fmt.Printf("outmac:%s\n",outmac)
+	//fmt.Printf("outmac:%s\n",outmac)
 	return []byte(outmac[0:8]), nil
 
 }
@@ -280,7 +292,7 @@ func upGetMac(buf []byte, bufsize int, mackey []byte) ([]byte, error) {
 /*
 8583报文打包,args传入个工作秘钥
 */
-func (ea *Easy8583) Pack8583Fields(args ...string) int {
+func (ea *Easy8583) Pack8583Fields() int {
 	fmt.Printf("pack 8583 fields\n")
 	//ea.Txbuf[]
 	ea.Txbuf = ea.Txbuf[0:23]
@@ -347,12 +359,12 @@ func (ea *Easy8583) Pack8583Fields(args ...string) int {
 	//如果64域存在，自动计算MAC并填充
 	if ea.Field_S[63].Ihave {
 		//txbuf := []byte{0x00,0x69,0x60,0x01,0x38,0x00,0x00,0x61,0x31,0x00,0x31,0x11,0x08,0x02,0x00,0x30,0x20,0x04,0x80,0x00,0xc0,0x80,0x31,0x00,0x00,0x00,0x30,0x30,0x30,0x30,0x30,0x30,0x00,0x00,0x02,0x03,0x20,0x00,0x33,0x34,0x33,0x38,0x36,0x30,0x31,0x33,0x38,0x39,0x38,0x34,0x33,0x30,0x34,0x34,0x31,0x31,0x31,0x30,0x30,0x31,0x32,0x31,0x35,0x36,0x00,0x24,0x41,0x33,0x30,0x31,0x39,0x36,0x32,0x32,0x32,0x36,0x37,0x35,0x32,0x38,0x31,0x34,0x36,0x34,0x32,0x39,0x38,0x36,0x33,0x34,0x00,0x13,0x22,0x00,0x00,0x80,0x00,0x06,0x00}
-		mac, err := upGetMac(ea.Txbuf[13:], len - 13 - 8, hexStringToBytes(args[0]))
+		mac, err := upGetMac(ea.Txbuf[13:], len - 13 - 8, MacKey)
 		if err != nil {
 			fmt.Println(err)
 			panic("calc mac error!")
 		}
-		fmt.Printf("mac:%x", mac)
+		//fmt.Printf("mac:%x", mac)
 		memcpy( ea.Field_S[63].Data, mac, 8)
 		memcpy(ea.Txbuf[len-8:], mac, 8)
 	}
