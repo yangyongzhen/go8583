@@ -131,7 +131,6 @@ func (ea *Easy8583) Init8583Fields(fds []Field) {
 	fds[43].Ltype = LLVAR
 
 	fds[47].Ltype = LLLVAR
-	fds[47].Dtype = BCD
 
 	fds[48].Ltype = 0
 	fds[48].Len = 3
@@ -141,6 +140,9 @@ func (ea *Easy8583) Init8583Fields(fds []Field) {
 	fds[52].Len = 8
 
 	fds[54].Ltype = LLLVAR //LLLVAR
+
+	fds[56].Ltype = LLLVAR
+
 	fds[58].Ltype = LLLVAR
 
 	fds[59].Ltype = LLLVAR
@@ -330,6 +332,7 @@ func (ea *Easy8583) Pack8583Fields() int {
 	tmplen := 0
 	seat := 0x80
 	for i := 0; i < 64; i++ {
+		fmt.Printf("i = %d\n", i)
 		seat = (seat >> 1)
 		if (i % 8) == 0 {
 			j++
@@ -370,6 +373,8 @@ func (ea *Easy8583) Pack8583Fields() int {
 				memcpy(ea.Txbuf[len:], ea.Field_S[i].Data, tmplen)
 				len += tmplen
 
+			} else {
+				fmt.Printf("error,no type defined,field i=%d\n", i)
 			}
 
 		}
@@ -385,12 +390,23 @@ func (ea *Easy8583) Pack8583Fields() int {
 	memcpy(ea.Txbuf[13:], ea.Msgtype, 2)
 	memcpy(ea.Txbuf[15:], ea.Bitmap, 8)
 	//如果64域存在，自动计算MAC并填充
+
 	if ea.Field_S[63].Ihave {
+		var err error
+		mac := make([]byte, 8)
 		//txbuf := []byte{0x00,0x69,0x60,0x01,0x38,0x00,0x00,0x61,0x31,0x00,0x31,0x11,0x08,0x02,0x00,0x30,0x20,0x04,0x80,0x00,0xc0,0x80,0x31,0x00,0x00,0x00,0x30,0x30,0x30,0x30,0x30,0x30,0x00,0x00,0x02,0x03,0x20,0x00,0x33,0x34,0x33,0x38,0x36,0x30,0x31,0x33,0x38,0x39,0x38,0x34,0x33,0x30,0x34,0x34,0x31,0x31,0x31,0x30,0x30,0x31,0x32,0x31,0x35,0x36,0x00,0x24,0x41,0x33,0x30,0x31,0x39,0x36,0x32,0x32,0x32,0x36,0x37,0x35,0x32,0x38,0x31,0x34,0x36,0x34,0x32,0x39,0x38,0x36,0x33,0x34,0x00,0x13,0x22,0x00,0x00,0x80,0x00,0x06,0x00}
-		mac, err := UpGetMac(ea.Txbuf[13:], len-13-8, ea.MacKey)
-		if err != nil {
-			fmt.Println(err)
-			panic("calc mac error!")
+		if ea.YsEnable == 1 {
+			mac, err = Ansi99XGetMac(ea.Txbuf[13:], len-13-8, ea.MacKey)
+			if err != nil {
+				fmt.Println(err)
+				//panic("calc mac error!")
+			}
+		} else {
+			mac, err = UpGetMac(ea.Txbuf[13:], len-13-8, ea.MacKey)
+			if err != nil {
+				fmt.Println(err)
+				//panic("calc mac error!")
+			}
 		}
 		//fmt.Printf("mac:%x", mac)
 		memcpy(ea.Field_S[63].Data, mac, 8)

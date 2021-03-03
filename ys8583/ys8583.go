@@ -280,6 +280,141 @@ func (up *Ys8583) Ans8583QD(rxbuf []byte, rxlen int) error {
 	return nil
 }
 
+/*
+银联8583 二维码交易组包
+dealtime:格式为YYYYMMDDhhmmss
+*/
+func (up *Ys8583) Frame8583Qrcode(qrcode string, money int, recSn int, dealtime string) {
+
+	s := up.Ea
+	field := up.Ea.Field_S
+	var isZfbWx bool
+
+	s.Init8583Fields(field)
+
+	if len(qrcode) == 18 {
+		//支付宝或微信付款码长度为18
+		isZfbWx = true
+	}
+
+	//消息类型
+	s.Msgtype[0] = 0x02
+	s.Msgtype[1] = 0x00
+
+	//3域 交易处理码
+	field[2].Ihave = true
+	field[2].Len = 3
+	field[2].Data = []byte{0x19, 0x00, 0x00}
+
+	//4域 交易金额
+	field[3].Ihave = true
+	field[3].Len = 6
+	field[3].Data = utils.HexStringToBytes(fmt.Sprintf("%012d", money))
+	//11域，受卡方系统跟踪号BCD 通讯流水
+	field[10].Ihave = true
+	field[10].Len = 3
+	sn := fmt.Sprintf("%06d", recSn)
+
+	field[10].Data = utils.HexStringToBytes(sn)
+	//22域
+	field[21].Ihave = true
+	field[21].Len = 2
+	if isZfbWx {
+		field[21].Data = []byte{0x92, 0x00}
+	} else {
+		field[21].Data = []byte{0x07, 0x20}
+	}
+
+	//25域
+	field[24].Ihave = true
+	field[24].Len = 1
+	field[24].Data = []byte{0x91}
+
+	//41域，终端号
+	field[40].Ihave = true
+	field[40].Len = 8
+	field[40].Data = []byte(up.PosNum)
+	//42域，商户号
+	field[41].Ihave = true
+	field[41].Len = 15
+	field[41].Data = []byte(up.ManNum)
+
+	//48域 行业特定信息
+	field[47].Ihave = true
+	field[47].Len = 0x66
+	field[47].Data = make([]byte, 66)
+	memcpy(field[47].Data[0:], []byte("PA570900000001"), 14)
+	memcpy(field[47].Data[14:], []byte("\x1F\x51\x0224"), 5)         //1F51交易类型24,一次性消费
+	memcpy(field[47].Data[19:], []byte("\x1F\x52\x0202"), 5)         //1F51接入渠道,02,POS通
+	memcpy(field[47].Data[24:], []byte("\xFF\x57\x011"), 4)          //FF57进站站点
+	memcpy(field[47].Data[28:], []byte("\xFF\x58\x0E"+dealtime), 17) //FF58进站时间
+	memcpy(field[47].Data[45:], []byte("\xFF\x61\x0201"), 5)         //FF61公司
+	memcpy(field[47].Data[50:], []byte("\xFF\x62\x0201"), 5)         //FF62线路
+	memcpy(field[47].Data[55:], []byte("\xFF\x63\x0201"), 5)         //FF63车牌
+	memcpy(field[47].Data[60:], []byte("\xFF\x64\x0201"), 5)         //FF64司机ID
+	field[47].Data[65] = '#'                                         //结束符
+	//49域 交易货币代码
+	field[48].Ihave = true
+	field[48].Len = 3
+	field[48].Data = []byte{0x31, 0x35, 0x36}
+	//57域 POS相关信息
+	field[56].Ihave = true
+	field[56].Len = 3
+
+	if isZfbWx {
+		field[56].Len = 0x0171
+		field[56].Data = make([]byte, 171)
+	} else {
+		field[56].Len = 0x0172
+		field[56].Data = make([]byte, 172)
+	}
+	memcpy(field[56].Data[0:], []byte("PB51A200000002"), 14)
+	uno := fmt.Sprintf("%-50s", "")
+	memcpy(field[56].Data[14:], []byte(uno), 50)     //系统用户号
+	memcpy(field[56].Data[64:], []byte("000000"), 6) //交易月份
+	if isZfbWx {
+		memcpy(field[56].Data[70:], []byte("097"), 3) //附加子域长度
+	} else {
+		memcpy(field[56].Data[70:], []byte("098"), 3) //附加子域长度
+	}
+	memcpy(field[56].Data[73:], []byte("\x1F\x51\x03ODA"), 6)                             //1F51接入渠道ODA
+	memcpy(field[56].Data[79:], []byte("\xFF\x57\x10\x00"+up.ManNum), 19)                 //FF57 “0”+15位商户号
+	memcpy(field[56].Data[98:], []byte("\xFF\x58\x08"+up.PosNum), 11)                     //FF58 传统POS：送8位终端号
+	memcpy(field[56].Data[109:], []byte("\xFF\x61\x01\x03"), 4)                           //FF61 支付方式 03扫码
+	memcpy(field[56].Data[113:], []byte("\xFF\x42\x04\x46\x46\x46\x46"), 7)               //FF42
+	memcpy(field[56].Data[120:], []byte("\xBF\x12\x1A"+"11111111111111111111111111"), 29) //BF12 担保号
+	if isZfbWx {
+		memcpy(field[56].Data[149:], []byte("\xFF\x55\x12"+qrcode), 21) //FF55 码数据
+		field[56].Data[170] = '#'                                       //结束符
+	} else {
+		memcpy(field[56].Data[149:], []byte("\xFF\x55\x13"+qrcode), 22) //FF55 码数据
+		field[56].Data[171] = '#'                                       //结束符
+	}
+
+	//60域
+	field[59].Ihave = true
+	field[59].Len = 0x14
+	field[59].Data = make([]byte, 7)
+	field[59].Data[0] = 0x22
+	memcpy(field[59].Data[1:], up.PiciNum, 3)
+	field[59].Data[4] = 0x00
+	field[59].Data[5] = 0x06
+	field[59].Data[6] = 0x00
+
+	//MAC，64域
+	field[63].Ihave = true
+	field[63].Len = 0x08
+	field[63].Data = make([]byte, 8)
+	//这个域要求填MAC，只需按这样填，MAC的计算在pack8583Fields自动完成了
+	/*报文组帧，自动组织这些域到Pack的TxBuffer中*/
+	s.Pack8583Fields()
+
+	//CommSn++ //通讯流水每次加一
+
+	//s.PrintFields(up.Ea.Field_S)
+
+}
+
 /**
 二维码交易应答报文解析
 */
@@ -323,92 +458,6 @@ func (up *Ys8583) Ans8583Qrcode(rxbuf []byte, rxlen int) error {
 	return nil
 }
 
-/*
-银联8583 二维码交易组包
-*/
-func (up *Ys8583) Frame8583Qrcode(qrcode string, money int, recSn int) {
-
-	s := up.Ea
-	field := up.Ea.Field_S
-
-	s.Init8583Fields(field)
-
-	//消息类型
-	s.Msgtype[0] = 0x02
-	s.Msgtype[1] = 0x00
-
-	//3域 交易处理码
-	field[2].Ihave = true
-	field[2].Len = 3
-	field[2].Data = make([]byte, 3)
-	//4域 交易金额
-	field[3].Ihave = true
-	field[3].Len = 6
-	field[3].Data = utils.HexStringToBytes(fmt.Sprintf("%012d", money))
-	//11域，受卡方系统跟踪号BCD 通讯流水
-	field[10].Ihave = true
-	field[10].Len = 3
-	sn := fmt.Sprintf("%06d", recSn)
-
-	field[10].Data = utils.HexStringToBytes(sn)
-
-	//22域
-	field[21].Ihave = true
-	field[21].Len = 2
-	field[21].Data = []byte{0x03, 0x20}
-	//25域
-	field[24].Ihave = true
-	field[24].Len = 1
-	field[24].Data = make([]byte, 1)
-
-	//41域，终端号
-	field[40].Ihave = true
-	field[40].Len = 8
-	field[40].Data = []byte(up.PosNum)
-	//42域，商户号
-	field[41].Ihave = true
-	field[41].Len = 15
-	field[41].Data = []byte(up.ManNum)
-
-	//49域 交易货币代码
-	field[48].Ihave = true
-	field[48].Len = 3
-	field[48].Data = []byte{0x31, 0x35, 0x36}
-	//59域，扫码的数据
-	field[58].Ihave = true
-	field[58].Len = 0x24
-	field[58].Data = make([]byte, 24)
-	field[58].Data[0] = 'A' //TAG+Len(019)
-	field[58].Data[1] = '3'
-	field[58].Data[2] = '0'
-	field[58].Data[3] = '1'
-	field[58].Data[4] = '9'
-	memcpy(field[58].Data[5:], []byte(qrcode), 19)
-
-	//60域
-	field[59].Ihave = true
-	field[59].Len = 0x13
-	field[59].Data = make([]byte, 7)
-	field[59].Data[0] = 0x22
-	memcpy(field[59].Data[1:], up.PiciNum, 3)
-	field[59].Data[4] = 0x00
-	field[59].Data[5] = 0x06
-	field[59].Data[6] = 0x00
-
-	//MAC，64域
-	field[63].Ihave = true
-	field[63].Len = 0x08
-	field[63].Data = make([]byte, 8)
-	//这个域要求填MAC，只需按这样填，MAC的计算在pack8583Fields自动完成了
-	/*报文组帧，自动组织这些域到Pack的TxBuffer中*/
-	s.Pack8583Fields()
-
-	//CommSn++ //通讯流水每次加一
-
-	//s.PrintFields(up.Ea.Field_S)
-
-}
-
 func NewYs8583() *Ys8583 {
 
 	var up = new(Ys8583)
@@ -448,186 +497,6 @@ func (up *Ys8583) Setup(sn, manNum, posNum, tmkkey, mainKey, tpdu string) {
 	up.TmkKey = tmkkey
 	up.MainKey = mainKey
 	up.Ea.Tpdu = utils.HexStringToBytes(up.TPDU)
-}
-
-/*
-银联8583 电子现金交易组包
-*/
-//获取55域 IC卡数据域
-/*
-9F26 08
-9F27 01
-9F10
-9F37 04
-9F36 02
-95 05
-9A 03
-9C 01
-9F02 06
-5F2A 02
-82 02
-9F1A 02
-9F03 06
-9F33 03
-9F1E 08
-84
-9F09 02
-9F41 04
-9F34 03
-9F35 01
-9F63 10
-9F74 06
-8A 02
-*/
-
-func (up *Ys8583) Frame8583UpCash(cardbin string, money int, cardvailddata string, cardholdsn string, field55 []byte) {
-	s := up.Ea
-	field := up.Ea.Field_S
-
-	s.Init8583Fields(field)
-
-	//消息类型
-	s.Msgtype[0] = 0x02
-	s.Msgtype[1] = 0x00
-	//2域 卡号
-	field[1].Ihave = true
-	tmp := fmt.Sprintf("%02d", len(cardbin))
-	t, _ := strconv.ParseInt(tmp, 16, 16)
-	if len(cardbin)%2 != 0 {
-		cardbin += "0"
-	}
-	field[1].Len = int(t)
-	field[1].Data = utils.HexStringToBytes(cardbin)
-	//3域 交易处理码
-	field[2].Ihave = true
-	field[2].Len = 3
-	field[2].Data = make([]byte, 3)
-	//4域 交易金额
-	field[3].Ihave = true
-	field[3].Len = 6
-	field[3].Data = utils.HexStringToBytes(fmt.Sprintf("%012d", money))
-	//11域，受卡方系统跟踪号BCD 通讯流水
-	field[10].Ihave = true
-	field[10].Len = 3
-	sn := fmt.Sprintf("%06d", up.RecSn)
-
-	field[10].Data = utils.HexStringToBytes(sn)
-
-	//14域 卡有效期，能获取到时存在
-	if len(cardvailddata) > 0 {
-		field[13].Ihave = true
-		field[13].Len = 2
-		field[13].Data = utils.HexStringToBytes(cardvailddata)
-	}
-
-	//22域
-	field[21].Ihave = true
-	field[21].Len = 2
-	field[21].Data = []byte{0x07, 0x20}
-	//23域，卡序列号 能获取时存在
-	if len(cardholdsn) > 0 {
-		field[22].Ihave = true
-		field[22].Len = 2
-		field[22].Data = utils.HexStringToBytes(cardholdsn)
-	}
-	//25域
-	field[24].Ihave = true
-	field[24].Len = 1
-	field[24].Data = make([]byte, 1)
-
-	//41域，终端号
-	field[40].Ihave = true
-	field[40].Len = 8
-	field[40].Data = []byte(up.PosNum)
-	//42域，商户号
-	field[41].Ihave = true
-	field[41].Len = 15
-	field[41].Data = []byte(up.ManNum)
-
-	//49域 交易货币代码
-	field[48].Ihave = true
-	field[48].Len = 3
-	field[48].Data = []byte{0x31, 0x35, 0x36}
-
-	//55域 IC卡数据域
-	field[54].Ihave = true
-	tmp = fmt.Sprintf("%04d", len(field55))
-	b := utils.HexStringToBytes(tmp)
-	field[54].Len = int(b[0])<<8 | int(b[1])
-	field[54].Data = field55
-	//60域
-	field[59].Ihave = true
-	field[59].Len = 0x13
-	field[59].Data = make([]byte, 7)
-	field[59].Data[0] = 0x36
-	memcpy(field[59].Data[1:], up.PiciNum, 3)
-	field[59].Data[4] = 0x00
-	field[59].Data[5] = 0x06
-	field[59].Data[6] = 0x00
-	//63域
-	field[62].Ihave = true
-	field[62].Len = 0x03
-	field[62].Data = make([]byte, 3)
-	memcpy(field[62].Data, []byte("CUP"), 3)
-	//MAC，64域
-	field[63].Ihave = true
-	field[63].Len = 0x08
-	field[63].Data = make([]byte, 8)
-	//这个域要求填MAC，只需按这样填，MAC的计算在pack8583Fields自动完成了
-	/*报文组帧，自动组织这些域到Pack的TxBuffer中*/
-	s.Pack8583Fields()
-}
-
-func (up *Ys8583) Ans8583UpCash(rxbuf []byte, rxlen int) error {
-
-	r := up.Ea
-	fields := up.Ea.Field_S
-	fieldr := up.Ea.Field_R
-
-	ret := r.Ans8583Fields(rxbuf, rxlen)
-	if ret == 0 {
-		fmt.Println("解析成功")
-		r.PrintFields(fieldr)
-	} else {
-		fmt.Println("解析失败")
-		r.PrintFields(fieldr)
-		return errors.New("error,failed to ans..")
-	}
-	//消息类型判断
-	if (r.Msgtype[0] != 0x02) || (r.Msgtype[1] != 0x10) {
-		//Log.d(TAG,"消息类型错！");
-		return errors.New("error,wrong Msgtype ")
-	}
-	//应答码判断
-	if (fieldr[38].Data[0] != 0x30) || (fieldr[38].Data[1] != 0x30) {
-		//Log.d(TAG,"应答码不正确！");
-		return errors.New("error,wrong resp code:" + fmt.Sprintf("%02x%02x", fieldr[38].Data[0], fieldr[38].Data[1]))
-	}
-	//跟踪号比较
-	//memcmp
-	if !equals(fields[10].Data, fieldr[10].Data) {
-		return errors.New("error,wrong comm no ")
-	}
-
-	//终端号比较
-	if !equals(fields[40].Data, fieldr[40].Data) {
-		return errors.New("error,posnum not equal ")
-	}
-	//商户号比较
-	if !equals(fields[41].Data, fieldr[41].Data) {
-		return errors.New("error,mannum not equal ")
-	}
-	//MAC验证
-	mac, err := easy8583.UpGetMac(rxbuf[13:], rxlen-13-8, up.Ea.MacKey)
-	if err != nil {
-		fmt.Println(err)
-		panic("calc mac error!")
-	}
-	if !equals(fieldr[63].Data, mac) {
-		return errors.New("error,mac check err")
-	}
-
-	return nil
 }
 
 /*
@@ -884,7 +753,7 @@ func main() {
 	ys.Frame8583QD()
 	ys.Ea.PrintFields(ys.Ea.Field_S)
 	//fmt.Println(utils.BytesToHexString(up.Ea.Txbuf))
-	ys.Frame8583Qrcode("6220485073630469936", 1, 1)
+	ys.Frame8583Qrcode("6220485073630469936", 1, 1, "20210303153630")
 	ys.Ea.PrintFields(ys.Ea.Field_S)
 
 	//YsQdProc()
