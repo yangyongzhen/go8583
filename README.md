@@ -1,8 +1,9 @@
 # go8583
 easy and simple 8583 Protocol Analysis by go Language
 
-it's so easy to use,and support UnionPay, signin and qrcode deal
+it's so easy,and support UnionPay, signin and qrcode deal
 How to use?
+
 `
 func main() {
 
@@ -37,6 +38,7 @@ func main() {
 
 }
 `
+
 
 PS D:\GOPATH\src\go8583> go run demo.go
 
