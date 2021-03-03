@@ -1,11 +1,10 @@
-package byteutil
+package utils
 
 import (
 	"bytes"
 	"fmt"
 	"strconv"
 )
-
 
 func BytesToHexStr(data []byte, lenth int) string {
 	buf := data[0:lenth]
@@ -45,12 +44,5 @@ func BcdToInt(data []byte, lenth int) int {
 	hexStr := fmt.Sprintf("%x", buf)
 	out, _ := strconv.ParseInt(hexStr, 10, 32)
 	return int(out)
-
-}
-
-
-func main() {
-
-	fmt.Println("test...")
 
 }

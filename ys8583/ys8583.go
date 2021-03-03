@@ -1,10 +1,11 @@
 /**
-银联8583报文,
-包含签到，云闪付二维码交易，银联卡小额免密交易
+银商8583, tls socket交易方式
+银商8583聚合支付交易,微信付款码、支付宝付款码和云闪付二维码
+包含签到、云闪付二维码交易、银联卡小额免密交易
 Author:yangyongzhen
 QQ:534117529
 */
-package up8583
+package ys8583
 
 import (
 	"errors"
@@ -15,18 +16,21 @@ import (
 	"strings"
 )
 
-type Up8583 struct {
+type Ys8583 struct {
 	Ea         *easy8583.Easy8583
 	ManNum     string //商户号
 	PosNum     string //终端号
-	MainKey    string //主密钥
 	TPDU       string
-	CommSn     int    //通信流水
+	CommSn     int    //通讯流水
 	RecSn      int    //售卡方系统跟踪号
 	PiciNum    []byte //批次号
 	LicenceNum []byte
 
-	MacKey string //MAC key
+	MID     string //型号
+	SN      string //设备sn号
+	MainKey string //主密钥
+	TmkKey  string //主控秘钥
+	MacKey  string //MACkey
 
 	UpBinNum  string //银行卡卡号
 	CardSnNum string //持卡序号
@@ -59,10 +63,80 @@ func equals(src1 []byte, src2 []byte) bool {
 	return true
 }
 
-/*
-银联8583签到组包
+/**
+银商认证报文头
 */
-func (up *Up8583) Frame8583QD() {
+
+type header struct {
+	lenth   []byte
+	mactype []byte
+	hwno    []byte
+	seccode []byte
+	randnum []byte
+	check   byte
+}
+
+func checkXor(src []byte, size int) byte {
+	check := src[0]
+	for i := 1; i < size; i++ {
+		check ^= src[i]
+	}
+	return check
+}
+
+/**
+FrameAuth
+银商认证报文组包
+*/
+
+func (up *Ys8583) FrameAuth() ([]byte, error) {
+
+	hd := header{}
+	hd.lenth = make([]byte, 2)
+	hd.mactype = make([]byte, 20)
+	hd.hwno = make([]byte, 38)
+	hd.seccode = make([]byte, 24)
+	hd.randnum = make([]byte, 16)
+
+	hd.lenth[0] = 0x00
+	hd.lenth[1] = 0x63
+
+	mid := fmt.Sprintf("%-20s", up.MID)
+	memcpy(hd.mactype, []byte(mid), 20)
+
+	sn := fmt.Sprintf("%-38s", up.SN)
+	memcpy(hd.hwno, []byte(sn), 38)
+
+	code := fmt.Sprintf("%-24s", up.MID)
+	memcpy(hd.seccode, []byte(code), 24)
+
+	tmkey := utils.HexStringToBytes(up.TmkKey)
+	authkey, err := utils.Des3Encrypt(hd.randnum, tmkey)
+	if err != nil {
+		return nil, err
+	}
+	seccode, err := utils.Des3Encrypt(hd.seccode, authkey)
+	if err != nil {
+		return nil, err
+	}
+	memcpy(hd.seccode, seccode, 24)
+	hd.check = checkXor(hd.randnum, 16)
+
+	buf := make([]byte, 101)
+	memcpy(buf[0:], hd.lenth, 2)
+	memcpy(buf[2:], hd.mactype, 20)
+	memcpy(buf[22:], hd.hwno, 38)
+	memcpy(buf[60:], hd.seccode, 24)
+	memcpy(buf[84:], hd.randnum, 16)
+	buf[100] = hd.check
+	//fmt.Printf("Authentation:%#v\n", up.Ea.Txbuf)
+	return buf, nil
+}
+
+/*
+8583签到组包
+*/
+func (up *Ys8583) Frame8583QD() {
 
 	s := up.Ea
 	field := up.Ea.Field_S
@@ -121,7 +195,10 @@ func (up *Up8583) Frame8583QD() {
 
 }
 
-func (up *Up8583) Ans8583QD(rxbuf []byte, rxlen int) error {
+/**
+8583签到应答报文解析
+*/
+func (up *Ys8583) Ans8583QD(rxbuf []byte, rxlen int) error {
 
 	r := up.Ea
 	fields := up.Ea.Field_S
@@ -180,18 +257,19 @@ func (up *Up8583) Ans8583QD(rxbuf []byte, rxlen int) error {
 		return errors.New("error,Er PIK")
 	}
 	//3DES解密MAC KEY
-	memcpy(data, fieldr[61].Data[20:], 16)
+	memcpy(data, fieldr[61].Data[20:], 8)
 	mackey, err := utils.Des3Decrypt(data, utils.HexStringToBytes(up.MainKey))
 	if err != nil {
 		return errors.New("3" + err.Error())
 	}
+	//fmt.Printf("mackey:%s\n", utils.BytesToHexString(mackey))
 	out, err = utils.DesEncrypt(tmp, mackey[0:8])
 	if err != nil {
 		return errors.New("4" + err.Error())
 	}
 	maccheck := make([]byte, 4)
 	memcpy(check, out, 4)
-	memcpy(maccheck, fieldr[61].Data[36:], 4)
+	memcpy(maccheck, fieldr[61].Data[28:], 4)
 	if !equals(check, maccheck) {
 		return errors.New("error,Er MAC")
 	}
@@ -202,7 +280,10 @@ func (up *Up8583) Ans8583QD(rxbuf []byte, rxlen int) error {
 	return nil
 }
 
-func (up *Up8583) Ans8583Qrcode(rxbuf []byte, rxlen int) error {
+/**
+二维码交易应答报文解析
+*/
+func (up *Ys8583) Ans8583Qrcode(rxbuf []byte, rxlen int) error {
 	r := up.Ea
 	fields := up.Ea.Field_S
 	fieldr := up.Ea.Field_R
@@ -244,11 +325,8 @@ func (up *Up8583) Ans8583Qrcode(rxbuf []byte, rxlen int) error {
 
 /*
 银联8583 二维码交易组包
-qrcode:二维码内容
-money:交易金额
-recSn:交易流水
 */
-func (up *Up8583) Frame8583Qrcode(qrcode string, money int, recSn int) {
+func (up *Ys8583) Frame8583Qrcode(qrcode string, money int, recSn int) {
 
 	s := up.Ea
 	field := up.Ea.Field_S
@@ -331,35 +409,43 @@ func (up *Up8583) Frame8583Qrcode(qrcode string, money int, recSn int) {
 
 }
 
-func NewUp8583() *Up8583 {
+func NewYs8583() *Ys8583 {
 
-	var up = new(Up8583)
+	var up = new(Ys8583)
 	up.Ea = easy8583.New8583()
 	up.TPDU = "6000000001"
 	up.ManNum = "000000000000000"
 	up.PosNum = "00000000"
 	up.MainKey = "00000000000000000000000000000000"
+	up.TmkKey = "00000000000000000000000000000000"
+	up.MID = "B503"
+	up.SN = "000000000000"
 	up.CommSn = 1
 	up.RecSn = 1 //终端交易流水，连续，且不能重复
 	up.PiciNum = make([]byte, 3)
 	up.LicenceNum = []byte{0x33, 0x30, 0x36, 0x30}
 	up.MacKey = "0000000000000000"
 	up.Ea.Tpdu = utils.HexStringToBytes(up.TPDU)
+
+	up.Ea.YsEnable = 1 //启用银商
 	return up
 
 }
 
 /**
-Setup
-初始化参数配置
+初始化，交易参数配置
+sn:设备sn号
 manNum:商户号
 posNum:终端号
+tmkkey:主控秘钥
 mainKey:主密钥
 */
-func (up *Up8583) Setup(manNum, posNum, mainKey, tpdu string) {
+func (up *Ys8583) Setup(sn, manNum, posNum, tmkkey, mainKey, tpdu string) {
+	up.SN = sn
 	up.TPDU = tpdu
 	up.ManNum = manNum
 	up.PosNum = posNum
+	up.TmkKey = tmkkey
 	up.MainKey = mainKey
 	up.Ea.Tpdu = utils.HexStringToBytes(up.TPDU)
 }
@@ -394,7 +480,7 @@ func (up *Up8583) Setup(manNum, posNum, mainKey, tpdu string) {
 8A 02
 */
 
-func (up *Up8583) Frame8583UpCash(cardbin string, money int, cardvailddata string, cardholdsn string, field55 []byte) {
+func (up *Ys8583) Frame8583UpCash(cardbin string, money int, cardvailddata string, cardholdsn string, field55 []byte) {
 	s := up.Ea
 	field := up.Ea.Field_S
 
@@ -492,7 +578,7 @@ func (up *Up8583) Frame8583UpCash(cardbin string, money int, cardvailddata strin
 	s.Pack8583Fields()
 }
 
-func (up *Up8583) Ans8583UpCash(rxbuf []byte, rxlen int) error {
+func (up *Ys8583) Ans8583UpCash(rxbuf []byte, rxlen int) error {
 
 	r := up.Ea
 	fields := up.Ea.Field_S
@@ -553,7 +639,7 @@ func getfield55(in []byte, inlen int) []byte {
 
 }
 
-func (up *Up8583) Frame8583Quics(money int, dealtime string, field55 []byte) {
+func (up *Ys8583) Frame8583Quics(money int, dealtime string, field55 []byte) {
 	s := up.Ea
 	field := up.Ea.Field_S
 
@@ -676,7 +762,7 @@ func (up *Up8583) Frame8583Quics(money int, dealtime string, field55 []byte) {
 	s.Pack8583Fields()
 }
 
-func (up *Up8583) Ans8583Quics(rxbuf []byte, rxlen int) error {
+func (up *Ys8583) Ans8583Quics(rxbuf []byte, rxlen int) error {
 
 	r := up.Ea
 	fields := up.Ea.Field_S
@@ -728,15 +814,60 @@ func (up *Up8583) Ans8583Quics(rxbuf []byte, rxlen int) error {
 	return nil
 }
 
-/**
-使用demo
+/*
+func YsQdProc() error {
+	log.Debugf("YS tls connect:server=%s,port=%d\n", YSServer, YSPort)
+	conn, err := utils.TlsConnect(YSServer, YSPort)
+	if err != nil {
+		return err
+	}
+	authbuf, err := ys.FrameAuth()
+	_, err = utils.TlsTxData(conn, authbuf)
+	if err != nil {
+		return err
+	}
+	rxbuf := make([]byte, 1024)
+	rxlen, err := utils.TlsRxData(conn, rxbuf)
+	if err != nil {
+		log.Debug("Authentation ERROR!%s\n", err)
+		return err
+	}
+	if rxbuf[2] != 0x30 || rxbuf[3] != 0x30 {
+		log.Debug("YS Authentation ERROR!\n")
+		return errors.New("YS Authentation ERROR")
+	}
+	log.Debug("YS Authentation OK!\n")
+	ys.Frame8583QD()
+	ys.Ea.PrintFields(ys.Ea.Field_S)
+
+	_, err = utils.TlsTxData(conn, ys.Ea.Txbuf)
+	if err != nil {
+		return err
+	}
+	rxlen, err = utils.TlsRxData(conn, rxbuf)
+	if err == nil {
+		log.Debugf("recv ok!len=%d\n", rxlen)
+		//log.Debugf("rxbuf=%s\n", utils.BytesToHexString(rxbuf))
+		if rxlen <= 0 {
+			log.Debug("recv error!len=%d\n", rxlen)
+			return errors.New("error: recv error,len is zero")
+		}
+		err = ys.Ans8583QD(rxbuf, rxlen)
+		if err == nil {
+			log.Debug("签到成功")
+		} else {
+			log.Debug("签到失败")
+			log.Debug(err)
+		}
+	}
+	return err
+}
 */
 func main() {
 
 	fmt.Println("test...")
-
-	up := NewUp8583()
-	up.Setup("888888888888888", "12345678", "11111111111111111111111111111111", "6005010000")
+	ys := NewYs8583()
+	ys.Setup("xxxxxxxxxxxx", "888888888888888", "12345678", "1234567890b8adbcb94626247dd9a31", "1234567890123456789041575b5b5b0ec", "6000270000")
 	//up.Frame8583QD()
 
 	//recvstr := "007960000001386131003111080810003800010AC0001450021122130107200800085500323231333031343931333239303039393939393930363030313433303137303131393939390011000005190030004046F161A743497B32EAC760DF5EA57DF5900ECCE3977731A7EA402DDF0000000000000000CFF1592A"
@@ -750,15 +881,12 @@ func main() {
 	// 	fmt.Println("解析失败")
 	// }
 
-	up.Frame8583QD()
-	up.Ea.PrintFields(up.Ea.Field_S)
-	//
-	//fmt.Println(utils.BytesToHexSrxbuf, err := utils.UpHttpsPost(Url, up.Ea.Txbuf)
-	// err = up.Ans8583QD(rxbuf, rxlen)
-	// if err == nil {
-	// 	log.Println("签到成功")
-	// }tring(up.Ea.Txbuf))
-	up.Frame8583Qrcode("6220485073630469936", 1, 1)
-	up.Ea.PrintFields(up.Ea.Field_S)
+	ys.Frame8583QD()
+	ys.Ea.PrintFields(ys.Ea.Field_S)
+	//fmt.Println(utils.BytesToHexString(up.Ea.Txbuf))
+	ys.Frame8583Qrcode("6220485073630469936", 1, 1)
+	ys.Ea.PrintFields(ys.Ea.Field_S)
+
+	//YsQdProc()
 
 }

@@ -1,9 +1,44 @@
 # go8583
 easy and simple 8583 Protocol Analysis by go Language
 
+it's so easy to use,and support UnionPay, signin and qrcode deal
+How to use?
+`
+func main() {
 
+	fmt.Println("test...")
 
-PS D:\GOPATH\src\go8583> go run test.go
+	up := NewUp8583()
+	//params setup
+	up.Setup("888888888888888", "12345678", "11111111111111111111111111111111", "6005010000")
+	//up.Frame8583QD()
+
+	//recvstr := "007960000001386131003111080810003800010AC0001450021122130107200800085500323231333031343931333239303039393939393930363030313433303137303131393939390011000005190030004046F161A743497B32EAC760DF5EA57DF5900ECCE3977731A7EA402DDF0000000000000000CFF1592A"
+
+	//recv := utils.HexStringToBytes(recvstr)
+	//ret := up.Ea.Ans8583Fields(recv, len(recv))
+	//if ret == 0 {
+	// 	fmt.Println("解析成功")
+	// 	up.Ea.PrintFields(up.Ea.Field_R)
+	// } else {
+	// 	fmt.Println("解析失败")
+	// }
+
+	up.Frame8583QD()
+	up.Ea.PrintFields(up.Ea.Field_S)
+	//
+	//fmt.Println(utils.BytesToHexSrxbuf, err := utils.UpHttpsPost(Url, up.Ea.Txbuf)
+	// err = up.Ans8583QD(rxbuf, rxlen)
+	// if err == nil {
+	// 	log.Println("签到成功")
+	// }tring(up.Ea.Txbuf))
+	up.Frame8583Qrcode("6220485073630469936", 1, 1)
+	up.Ea.PrintFields(up.Ea.Field_S)
+
+}
+`
+
+PS D:\GOPATH\src\go8583> go run demo.go
 
 test...
 ans 8583 fields

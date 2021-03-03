@@ -1,6 +1,7 @@
 /**
- * Created by yangyongzhen on 2019/01/11
- * simple 8583 Protocol Analysis
+* Created by yangyongzhen
+* QQ:534117529
+* simple 8583 Protocol Analysis tool by Golang
  */
 
 package easy8583
@@ -8,7 +9,7 @@ package easy8583
 import (
 	"bytes"
 	"fmt"
-	"go8583/desutil"
+	"go8583/utils"
 	"strconv"
 )
 
@@ -31,6 +32,10 @@ type Easy8583 struct {
 
 	Field_S []Field //发送的域
 	Field_R []Field //接收的域
+
+	MacKey []byte //工作秘钥
+
+	YsEnable byte //是否启用银商通道
 }
 
 //定义枚举类型 长度类型定义
@@ -48,18 +53,17 @@ const (
 	BCD        //value = 2，BCD
 )
 
-var (
-	MacKey  = []byte{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}
-)
-
 /*
 设置工作秘钥,算MAC用
 */
-func (ea *Easy8583) SetMacKey(strkey string){
-
-	MacKey = hexStringToBytes(strkey)
-
+func (ea *Easy8583) SetMacKey(strkey string) {
+	ea.MacKey = hexStringToBytes(strkey)
 }
+
+func (ea *Easy8583) SetYsEnable(flag byte) {
+	ea.YsEnable = flag
+}
+
 //各个域的初始配置
 func (ea *Easy8583) Init8583Fields(fds []Field) {
 
@@ -250,7 +254,7 @@ func dataXor(src []byte, dest []byte, size int, out []byte) {
 
 }
 
-func upGetMac(buf []byte, bufsize int, mackey []byte) ([]byte, error) {
+func UpGetMac(buf []byte, bufsize int, mackey []byte) ([]byte, error) {
 
 	block := make([]byte, 1024)
 	val := make([]byte, 8)
@@ -272,13 +276,13 @@ func upGetMac(buf []byte, bufsize int, mackey []byte) ([]byte, error) {
 	//fmt.Printf("Bbuf:%s\n",Bbuf)
 	Abuf := make([]byte, 8)
 	//fmt.Println(bytesToHexString( []byte(Bbuf[0:8]) ))
-	mac, err := desutil.DesEncrypt([]byte(Bbuf[0:8]), mackey)
+	mac, err := utils.DesEncrypt([]byte(Bbuf[0:8]), mackey)
 	if err != nil {
 		return nil, err
 	}
 	//fmt.Printf("mac1:%x\n",mac)
 	dataXor(mac, []byte(Bbuf[8:]), 8, Abuf)
-	mac, err = desutil.DesEncrypt(Abuf, mackey)
+	mac, err = utils.DesEncrypt(Abuf, mackey)
 	if err != nil {
 		return nil, err
 	}
@@ -287,6 +291,29 @@ func upGetMac(buf []byte, bufsize int, mackey []byte) ([]byte, error) {
 	//fmt.Printf("outmac:%s\n",outmac)
 	return []byte(outmac[0:8]), nil
 
+}
+
+func Ansi99XGetMac(buf []byte, bufsize int, mackey []byte) ([]byte, error) {
+	block := make([]byte, 1024)
+	val := make([]byte, 8)
+	xor := make([]byte, 8)
+	memcpy(block, buf, bufsize)
+
+	x := bufsize / 8 //计算有多少个完整的块
+	n := bufsize % 8
+
+	if n != 0 {
+		x += 1 //将补上的这一块加上去
+	}
+	j := 0
+	for i := 0; i < x; i++ {
+		dataXor(val, block[j:], 8, xor)
+		val, _ = utils.DesEncrypt(xor, mackey)
+		j += 8
+	}
+	mac := make([]byte, 8)
+	memcpy(mac, val, 8)
+	return mac, nil
 }
 
 /*
@@ -311,6 +338,7 @@ func (ea *Easy8583) Pack8583Fields() int {
 		if ea.Field_S[i].Ihave {
 			ea.Bitmap[j-1] |= byte(seat)
 			if ea.Field_S[i].Ltype == NOVAR {
+				//fmt.Printf("i =%d,len=%d,Field_S=%d\n", i, len, ea.Field_S[i].Len)
 				ea.Txbuf = ea.Txbuf[0 : len+ea.Field_S[i].Len]
 				memcpy(ea.Txbuf[len:], ea.Field_S[i].Data, ea.Field_S[i].Len)
 				len += ea.Field_S[i].Len
@@ -359,13 +387,13 @@ func (ea *Easy8583) Pack8583Fields() int {
 	//如果64域存在，自动计算MAC并填充
 	if ea.Field_S[63].Ihave {
 		//txbuf := []byte{0x00,0x69,0x60,0x01,0x38,0x00,0x00,0x61,0x31,0x00,0x31,0x11,0x08,0x02,0x00,0x30,0x20,0x04,0x80,0x00,0xc0,0x80,0x31,0x00,0x00,0x00,0x30,0x30,0x30,0x30,0x30,0x30,0x00,0x00,0x02,0x03,0x20,0x00,0x33,0x34,0x33,0x38,0x36,0x30,0x31,0x33,0x38,0x39,0x38,0x34,0x33,0x30,0x34,0x34,0x31,0x31,0x31,0x30,0x30,0x31,0x32,0x31,0x35,0x36,0x00,0x24,0x41,0x33,0x30,0x31,0x39,0x36,0x32,0x32,0x32,0x36,0x37,0x35,0x32,0x38,0x31,0x34,0x36,0x34,0x32,0x39,0x38,0x36,0x33,0x34,0x00,0x13,0x22,0x00,0x00,0x80,0x00,0x06,0x00}
-		mac, err := upGetMac(ea.Txbuf[13:], len - 13 - 8, MacKey)
+		mac, err := UpGetMac(ea.Txbuf[13:], len-13-8, ea.MacKey)
 		if err != nil {
 			fmt.Println(err)
 			panic("calc mac error!")
 		}
 		//fmt.Printf("mac:%x", mac)
-		memcpy( ea.Field_S[63].Data, mac, 8)
+		memcpy(ea.Field_S[63].Data, mac, 8)
 		memcpy(ea.Txbuf[len-8:], mac, 8)
 	}
 
@@ -427,6 +455,18 @@ func (ea *Easy8583) Ans8583Fields(rxbuf []byte, rxlen int) int {
 				if ea.Field_R[i].Dtype == BCD {
 					tmplen = ((tmplen / 2) + (tmplen % 2))
 				}
+
+				if ea.YsEnable == 1 {
+					//如果启用了银商通道
+					if i == 47 {
+						tmplen = bcdToInt(rxbuf[len:], 2)
+					}
+					if i == 61 {
+						tmplen = bcdToInt(rxbuf[len:], 2)
+						tmplen = tmplen / 2
+					}
+				}
+
 				len += 2
 				ea.Field_R[i].Data = make([]byte, tmplen)
 				memcpy(ea.Field_R[i].Data, rxbuf[len:], tmplen)
