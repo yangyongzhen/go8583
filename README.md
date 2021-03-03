@@ -28,11 +28,12 @@ func main() {
 	up.Frame8583QD()
 	up.Ea.PrintFields(up.Ea.Field_S)
 	//
-	//fmt.Println(utils.BytesToHexSrxbuf, err := utils.UpHttpsPost(Url, up.Ea.Txbuf)
+	//fmt.Println(utils.BytesToHexString(up.Ea.Txbuf))
+	//rxbuf, err := utils.UpHttpsPost(Url, up.Ea.Txbuf)
 	// err = up.Ans8583QD(rxbuf, rxlen)
 	// if err == nil {
 	// 	log.Println("签到成功")
-	// }tring(up.Ea.Txbuf))
+	// }
 	up.Frame8583Qrcode("6220485073630469936", 1, 1)
 	up.Ea.PrintFields(up.Ea.Field_S)
 
