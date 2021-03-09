@@ -177,6 +177,8 @@ func New8583() *Easy8583 {
 
 	ea.Bitmap = make([]byte, 8)
 
+	ea.MacKey = make([]byte, 8)
+
 	ea.Field_S = make([]Field, 64)
 	ea.Field_R = make([]Field, 64)
 
@@ -186,10 +188,15 @@ func New8583() *Easy8583 {
 	return ea
 }
 
+// func memcpy(dst, src []byte, size int) {
+// 	for i := 0; i < size; i++ {
+// 		dst[i] = src[i]
+// 	}
+// 	return
+// }
+
 func memcpy(dst, src []byte, size int) {
-	for i := 0; i < size; i++ {
-		dst[i] = src[i]
-	}
+	copy(dst, src[0:size])
 	return
 }
 
@@ -332,7 +339,7 @@ func (ea *Easy8583) Pack8583Fields() int {
 	tmplen := 0
 	seat := 0x80
 	for i := 0; i < 64; i++ {
-		fmt.Printf("i = %d\n", i)
+		//fmt.Printf("i = %d\n", i)
 		seat = (seat >> 1)
 		if (i % 8) == 0 {
 			j++

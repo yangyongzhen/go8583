@@ -38,10 +38,15 @@ type Ys8583 struct {
 	Fd35Data  string //二磁道数据
 }
 
+// func memcpy(dst, src []byte, size int) {
+// 	for i := 0; i < size; i++ {
+// 		dst[i] = src[i]
+// 	}
+// 	return
+// }
+
 func memcpy(dst, src []byte, size int) {
-	for i := 0; i < size; i++ {
-		dst[i] = src[i]
-	}
+	copy(dst, src[0:size])
 	return
 }
 
@@ -106,6 +111,7 @@ func (up *Ys8583) FrameAuth() ([]byte, error) {
 
 	sn := fmt.Sprintf("%-38s", up.SN)
 	memcpy(hd.hwno, []byte(sn), 38)
+	fmt.Printf("auth sn=%s\n", sn)
 
 	code := fmt.Sprintf("%-24s", up.MID)
 	memcpy(hd.seccode, []byte(code), 24)

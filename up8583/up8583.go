@@ -34,10 +34,15 @@ type Up8583 struct {
 	Fd35Data  string //二磁道数据
 }
 
+// func memcpy(dst, src []byte, size int) {
+// 	for i := 0; i < size; i++ {
+// 		dst[i] = src[i]
+// 	}
+// 	return
+// }
+
 func memcpy(dst, src []byte, size int) {
-	for i := 0; i < size; i++ {
-		dst[i] = src[i]
-	}
+	copy(dst, src[0:size])
 	return
 }
 
@@ -753,8 +758,7 @@ func main() {
 	up.Frame8583QD()
 	up.Ea.PrintFields(up.Ea.Field_S)
 	//
-	//fmt.Println(utils.BytesToHexString(up.Ea.Txbuf))
-	//rxbuf, err := utils.UpHttpsPost(Url, up.Ea.Txbuf)
+	//fmt.Println(utils.BytesToHexSrxbuf, err := utils.UpHttpsPost(Url, up.Ea.Txbuf)
 	// err = up.Ans8583QD(rxbuf, rxlen)
 	// if err == nil {
 	// 	log.Println("签到成功")
