@@ -61,6 +61,12 @@ func QdProc() error {
 	if Url == "" {
 		return errors.New("error: Url must not null")
 	}
+
+	//str := "003C600601000060310031181208000020000000C00012000000323230303336303031303435313235343131313030303100110000000000300003303030"
+	//up.Ea.Txbuf = utils.HexStringToBytes(str)
+	//str := "005E600601000060310031181208000020000000C0001600000032323030333630303130343531323534313131303030310011000000000030003239444243453930343435314631464246443634433735383045463944383037410003303030"
+	//up.Ea.Txbuf = utils.HexStringToBytes(str)
+	//fmt.Printf("send:%s\n", utils.BytesToHexString(up.Ea.Txbuf))
 	rxbuf, err := utils.UpHttpsPost(Url, up.Ea.Txbuf)
 	rxlen := len(rxbuf)
 	if err == nil {
@@ -69,6 +75,7 @@ func QdProc() error {
 			log.Printf("recv error!len=%d\n", rxlen)
 			return errors.New("error: recv error,len is zero")
 		}
+		fmt.Printf("recv:%s\n", utils.BytesToHexString(rxbuf))
 		err = up.Ans8583QD(rxbuf, rxlen)
 		if err == nil {
 			log.Println("签到成功")
